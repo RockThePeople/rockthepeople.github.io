@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { initSocket } from './Socket.jsx'
+import { MeasurePerformance } from './Performance.jsx'
 
 function App() {
 
@@ -9,7 +10,7 @@ function App() {
   return (
     <>
       <div>
-      
+        <MeasurePerformance />
       </div>
     </>
   )

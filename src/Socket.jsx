@@ -6,7 +6,7 @@ export function initSocket(socketRef) {
 
     let peerID = getPeerID();
     useEffect(() => {
-        socketRef.current = io("https://117.16.244.34:8084", { query: { peerID } });
+        socketRef.current = io("http://117.16.244.34:8084", { query: { peerID } });
         const socket = socketRef.current;
 
         console.log(peerID);
