@@ -34,7 +34,7 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
             break;
         }
     }
-    const res = await fetch("http://117.16.244.34:8083/save-csv", {
+    const res = await fetch("https://rockthepeople.store/save-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: performanceArray, filename: `${device}_${totalThreads}_threads` })
