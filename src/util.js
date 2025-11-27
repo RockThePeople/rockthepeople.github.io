@@ -51,6 +51,6 @@ export function hexStringToUint32Array(hexString) {
 //     return shajs('sha256').update(hexStringToUint8Array(step1Hash)).digest('hex');
 // }
 
-// export function getnTime(){
-//     return Math.floor(new Date().getTime()/1000).toString(16);
-// }
+export function getnTime(){
+    return Math.floor(new Date().getTime()/1000).toString(16);
+}
