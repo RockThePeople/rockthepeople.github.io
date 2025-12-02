@@ -1,61 +1,51 @@
-import { useEffect } from 'react'
-import { startMining } from './Mining.jsx';
+// Proper custom hook: register socket listeners inside useEffect and clean up on unmount.
+export function useHandleSocketMsg(socket, { handlers }) {
+    if (!socket) return;
 
-// Converted to a proper custom hook so React hooks are used from component render
-export function useHandleSocketMsg(socket) {
-
-    useEffect(() => {
-        if (!socket) return;
-
-        const messageHandler = async (res) => {
-            switch (res.method) {
-                case 'mining.notify':
-                    jobParams = res.params;
-                    // targetHash = jobParams[8]; // 이 줄 주석처리하면 테스트값
-                    console.log(`JobParams Received { jobId : ${jobParams[0]} }`);
-                    if (miningState[2]) {
-                        await startMining(jobParams);
-                    }
-                    break;
-                case 'mining.extraNonceAndDiff':
-                    setEN1(res.result[1]);
-                    difficulty = res.result[0][0][1]
-                    break;
-                case 'mining.authorizationConfirm':
-                    console.log("authorization confirmed");
-                    authFlag = true;
-                    break;
-                case 'submit.authError':
-                    console.log(res.method);
-                    break;
-                case 'submit.noExtraNonce':
-                    console.log(res.method);
-                    break;
-                case 'submit.responseResult':
-                    if (res.result) {
-                        console.log(`Submit Response : ${res.result}`);
-                    } else {
-                        console.log(`Submit Response : ${res.error[1]}`);
-                    }
-                    break;
-                case 'mining.set_difficulty': break;
-                default: break;
-            }
-        };
-
-        const difficultyHandler = (msg) => {
-            console.log(msg);
+    const messageHandler = async (res) => {
+        switch (res.method) {
+            case 'mining.notify':
+                // store job params so other components can react
+                handlers.setJobParams(res.params);
+                console.log(`JobParams Received { jobId : ${res.params && res.params[0]} }`);
+                break;
+            case 'mining.extraNonceAndDiff':
+                try {
+                    handlers.setEN1(res.result[1]);
+                    handlers.setDifficulty(res.result[0][0][1]);
+                } catch (e) {
+                    console.log((e)=>`Error parsing extraNonceAndDiff:${e}`, e);
+                }
+                // mark subscription as successful
+                handlers.setSubscribeFlag(true);
+                break;
+            case 'mining.authorizationConfirm':
+                console.log('authorization confirmed');
+                handlers.setAuthFlag(true);
+                break;
+            case 'submit.authError':
+            case 'submit.noExtraNonce':
+                console.warn(res.method, res);
+                break;
+            case 'submit.responseResult':
+                if (res.result) console.log('Submit Response :', res.result);
+                else console.log('Submit Response :', res.error && res.error[1]);
+                break;
+            default:
+                break;
         }
+    };
 
-        socket.on('message', messageHandler);
-        socket.on('difficultyUpdate', difficultyHandler);
+    const difficultyHandler = (msg) => {
+        console.log('difficultyUpdate', msg);
+        if (msg && msg.params) setDifficulty(msg.params[0]);
+    }
 
-        return () => {
-            // remove handlers and disconnect socket on cleanup
-            socket.off('message', messageHandler);
-            socket.off('difficultyUpdate', difficultyHandler);
-            try { socket.disconnect(); } catch (e) { /* ignore */ }
-        };
-    }, [socket]);
+    socket.on('message', messageHandler);
+    socket.on('difficultyUpdate', difficultyHandler);
 
+    return () => {
+        socket.off && socket.off('message', messageHandler);
+        socket.off && socket.off('difficultyUpdate', difficultyHandler);
+    }
 }

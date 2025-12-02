@@ -3,9 +3,10 @@ import { getPeerID } from './PeerID.jsx';
 import { useRef } from 'react';
 
 function initSocket() {
-    const socketRef = useRef(null);
-    const peerID = getPeerID();
-    socketRef.current = io("https://rockthepeople.store", { query: { peerID } });
+    var peerId = getPeerID();
+    const socketRef = useRef(null);;
+    socketRef.current = io("http://117.16.244.34:8084", { query: { peerId  } });
+    console.log(`Socket initialized with PeerID: ${peerId}`);
     return socketRef.current;
 }
 
