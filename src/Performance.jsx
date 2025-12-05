@@ -31,6 +31,9 @@ export const MeasurePerformance = () => {
         setCurrentNumofThread((workgroupX * workgroupY * workgroupZ * dispatchX * dispatchY * dispatchZ).toLocaleString());
     }, [workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ])
 
+    const [recordState, setRecordState] = useState(false);
+    function handleRecordToggle(value) { setRecordState(value); }
+
     const savedDuration = getFromLocalStorage("duration");
     const [duration, setDuration] = useState(savedDuration);
     function handleDuration(value) { setDuration(value); saveInLocalStorage("duration", value); }
@@ -69,7 +72,11 @@ export const MeasurePerformance = () => {
                 <div style={{ display: "flex", flexDirection: "row", gap: "10px", alignItems: "center", fontSize: "20px", marginTop: "-20px" }}>
                     <p>- Duration(s) : </p>
                     <input type="number" value={duration} onChange={(e) => handleDuration(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
-                    <Button clickEvent={() => runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration)} name={"Run"} />
+                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "16px" }}>
+                        <input type="checkbox" checked={recordState} onChange={(e) => handleRecordToggle(e.target.checked)} />
+                        Record
+                    </label>
+                    <Button clickEvent={() => runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration, recordState)} name={"Run"} />
                 </div>
             </div>
         </div >

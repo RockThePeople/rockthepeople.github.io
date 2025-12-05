@@ -10,14 +10,9 @@ import { atomExtraNonce1, atomAuthFlag, atomSubscribeFlag, atomJobParams, atomDi
 const wallet = 'bc1q4h5wttwul3mh8h8u7xp0vxqrezm68mc5utx039';
 function App() {
   const socket = initSocket();
-  const setEN1 = useSetRecoilState(atomExtraNonce1);
-  const setAuthFlag = useSetRecoilState(atomAuthFlag);
-  const setSubscribeFlag = useSetRecoilState(atomSubscribeFlag);
-  const setJobParams = useSetRecoilState(atomJobParams);
-  const setDifficulty = useSetRecoilState(atomDifficulty);
-  const handlers = { setEN1, setAuthFlag, setSubscribeFlag, setJobParams, setDifficulty};
+  const handlers = generateHandlers();
   useEffect(() => {
-    useHandleSocketMsg(socket,{handlers});
+    useHandleSocketMsg(socket, { handlers });
   }, [socket])
   return (
     <>
@@ -32,3 +27,12 @@ function App() {
 }
 
 export default App;
+
+function generateHandlers() {
+  const setEN1 = useSetRecoilState(atomExtraNonce1);
+  const setAuthFlag = useSetRecoilState(atomAuthFlag);
+  const setSubscribeFlag = useSetRecoilState(atomSubscribeFlag);
+  const setJobParams = useSetRecoilState(atomJobParams);
+  const setDifficulty = useSetRecoilState(atomDifficulty);
+  return { setEN1, setAuthFlag, setSubscribeFlag, setJobParams, setDifficulty };
+}

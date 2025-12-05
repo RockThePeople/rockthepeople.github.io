@@ -31,6 +31,9 @@ export function useHandleSocketMsg(socket, { handlers }) {
                 if (res.result) console.log('Submit Response :', res.result);
                 else console.log('Submit Response :', res.error && res.error[1]);
                 break;
+            case 'mining.startInterval':
+                console.log('Mining start interval received');
+                break;
             default:
                 break;
         }

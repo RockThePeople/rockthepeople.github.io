@@ -1,7 +1,7 @@
 
 import { runShader } from './shader.js';
 
-async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration) {
+async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration, record) {
     // 15625*64 = 1,000,000 (1M)
     let wgs = [workgroupX, workgroupY, workgroupZ];
     let dwg = [dispatchX, dispatchY, dispatchZ];
@@ -14,8 +14,9 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
 
     const startTime = Date.now(); // 현재 시각 (밀리초)
     const duration = setDuration * 1000;   // 1분 = 60초 = 60000ms
+    const shouldRecord = Boolean(record);
 
-    let performanceArray = [];
+    let performanceArray = shouldRecord ? [] : null;
 
     while (Date.now() - startTime < duration) {
         try {
@@ -26,7 +27,9 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
 
             let work = wgs[0] * wgs[1] * wgs[2] * dwg[0] * dwg[1] * dwg[2];
             let hashrate = (work / time).toFixed(0);
-            performanceArray.push({ time: time, hashrate: hashrate });
+            if (shouldRecord) {
+                performanceArray.push({ time: time, hashrate: hashrate });
+            }
         } catch (error) {
             console.log(
                 `While Loop Broken\nError :${error}`
@@ -34,13 +37,31 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
             break;
         }
     }
-    const res = await fetch("https://rockthepeople.store/save-csv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: performanceArray, filename: `${device}_${totalThreads}_threads` })
+    if (!shouldRecord) {
+        return;
+    }
+
+    if (!performanceArray.length) {
+        console.log("No performance data collected.");
+        return;
+    }
+
+    const csvRows = ["time(ms),hashrate"];
+    performanceArray.forEach(({ time, hashrate }) => {
+        csvRows.push(`${time},${hashrate}`);
     });
-    const response = await res.json();
-    console.log(response);
+
+    const csvBlob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const downloadName = `${device || "device"}_${totalThreads}_threads_${timestamp}.csv`;
+
+    const downloadLink = document.createElement("a");
+    downloadLink.href = URL.createObjectURL(csvBlob);
+    downloadLink.download = downloadName;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(downloadLink.href);
 }
 
 export { runPerformance };
