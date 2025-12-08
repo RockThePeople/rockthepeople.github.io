@@ -10,7 +10,7 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
         totalThreads = (totalThreads / 1000000).toFixed(2) + "M";
     }
 
-    console.log(`dispatchAmount ${dispatchX}, ${dispatchY}, ${dispatchZ} >> ${dispatchX * dispatchY * dispatchZ}M`);
+    console.log(`dispatchAmount >> ${workgroupX * workgroupY * workgroupZ * dispatchX * dispatchY * dispatchZ}M`);
 
     const startTime = Date.now(); // 현재 시각 (밀리초)
     const duration = setDuration * 1000;   // 1분 = 60초 = 60000ms
@@ -53,7 +53,7 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
 
     const csvBlob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const downloadName = `${device || "device"}_${totalThreads}_threads_${timestamp}.csv`;
+    const downloadName = `${totalThreads}_threads_${timestamp}.csv`;
 
     const downloadLink = document.createElement("a");
     downloadLink.href = URL.createObjectURL(csvBlob);
