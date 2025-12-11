@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "./Button.jsx";
 import { runPerformance } from "./RunPerformance.jsx";
+import { saveInLocalStorage, getFromLocalStorage } from "./LocalStorageControl.jsx";
 
 export const MeasurePerformance = () => {
 
@@ -41,7 +42,7 @@ export const MeasurePerformance = () => {
     function handleDeviceChange(value) { setDevice(value); }
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", paddingLeft: "50px" }}>
+        <div style={{ display: "flex", flexDirection: "column", paddingLeft: "50px", backgroundColor:"#c2dfbdff" }}>
             <div style={{ display: "flex", flexDirection: 'row', alignItems: "center" }}>
                 <p style={{ fontSize: "20px", marginRight: "10px" }}>Device :</p>
                 <select onChange={(e) => handleDeviceChange(e.target.value)} style={{ fontSize: '20px', width: 'fit-content', height: 'fit-content' }}>
@@ -81,16 +82,4 @@ export const MeasurePerformance = () => {
             </div>
         </div >
     )
-}
-
-function saveInLocalStorage(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-}
-
-function getFromLocalStorage(key) {
-    const value = localStorage.getItem(key);
-    if (key === "duration") {
-        return value ? JSON.parse(value) : 30; // default duration is 30 seconds
-    }
-    return value ? JSON.parse(value) : 1;
 }

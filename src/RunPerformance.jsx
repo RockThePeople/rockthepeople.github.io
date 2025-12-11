@@ -22,6 +22,7 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
         try {
             const time = await runShader(wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2]);
             if (time == null) {
+                console.log("Shader execution failed, exiting performance test.");
                 break;
             }
 

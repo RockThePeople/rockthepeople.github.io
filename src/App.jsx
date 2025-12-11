@@ -1,6 +1,7 @@
 import { Button } from './Button.jsx';
 import { initSocket } from './InitSocket.jsx'
 import { MeasurePerformance } from './Performance.jsx'
+import { AutoRunShader } from './AutoRunShader.jsx';
 import { sendSocketMsg } from './SendSocketMsg.jsx';
 import { useHandleSocketMsg } from './HandleSocketMsg.jsx';
 import { useEffect } from 'react';
@@ -17,11 +18,13 @@ function App() {
   return (
     <>
       <div>
-        <MeasurePerformance />
+        <Button clickEvent={() => sendSocketMsg(socket, `mining.authorize`, [wallet])} name={`Send Authorization`}></Button>
+        <Button clickEvent={() => sendSocketMsg(socket, `mining.subscribe`)} name={`Send Subscription`}></Button>
       </div>
-      <Button clickEvent={() => sendSocketMsg(socket, `mining.authorize`, [wallet])} name={`Send Authorization`}></Button>
-      <Button clickEvent={() => sendSocketMsg(socket, `mining.subscribe`)} name={`Send Subscription`}></Button>
-
+      <div>
+        <MeasurePerformance />
+        <AutoRunShader />
+      </div>
     </>
   );
 }
