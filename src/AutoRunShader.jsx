@@ -11,41 +11,58 @@ const sleep = (delay) => new Promise(resolve => setTimeout(resolve, delay));
 
 function averageMinusMax(values) {
     if (!values.length) return 0;
-    if (values.length === 1) return values[0];
-    const max = Math.max(...values);
-    const sum = values.reduce((total, v) => total + v, 0);
-    return (sum - max) / (values.length - 1);
+    return Math.min(...values);
 }
 
 export function AutoRunShader() {
 
-    const savedStartWorkgroupX = getFromLocalStorage("savedStartWorkgroupX");
+    const savedStartWorkgroupX = Number(getFromLocalStorage("savedStartWorkgroupX")) || 1;
     const [startWorkgroupX, setStartWorkgroupX] = useState(savedStartWorkgroupX);
-    function handleStartWorkgroupX(value) { setStartWorkgroupX(value); saveInLocalStorage("savedStartWorkgroupX", value); }
+    function handleStartWorkgroupX(value) {
+        const numericValue = Number(value);
+        setStartWorkgroupX(numericValue);
+        saveInLocalStorage("savedStartWorkgroupX", numericValue);
+    }
 
-    const savedStartDispatchX = getFromLocalStorage("savedStartDispatchX");
+    const savedStartDispatchX = Number(getFromLocalStorage("savedStartDispatchX")) || 1;
     const [startDispatchX, setStartDispatchX] = useState(savedStartDispatchX);
-    function handleStartDispatchX(value) { setStartDispatchX(value); saveInLocalStorage("savedStartDispatchX", value); }
+    function handleStartDispatchX(value) {
+        const numericValue = Number(value);
+        setStartDispatchX(numericValue);
+        saveInLocalStorage("savedStartDispatchX", numericValue);
+    }
 
-    const savedEndDispatchX = getFromLocalStorage("savedEndDispatchX");
+    const savedEndDispatchX = Number(getFromLocalStorage("savedEndDispatchX")) || 1;
     const [endDispatchX, setEndDispatchX] = useState(savedEndDispatchX);
-    function handleEndDispatchX(value) { setEndDispatchX(value); saveInLocalStorage("savedEndDispatchX", value); }
+    function handleEndDispatchX(value) {
+        const numericValue = Number(value);
+        setEndDispatchX(numericValue);
+        saveInLocalStorage("savedEndDispatchX", numericValue);
+    }
 
-     const [startThreadCount, setStartThreadCount] = useState(1);
-        useEffect(() => {
-            setStartThreadCount((startWorkgroupX * startDispatchX).toLocaleString());
-        }, [startWorkgroupX, startDispatchX])
+    const savedStepSize = Number(getFromLocalStorage("savedStepSize")) || 1;
+    const [stepSize, setStepSize] = useState(savedStepSize);
+    function handleStepSize(value) {
+        const numericValue = Number(value);
+        setStepSize(numericValue);
+        saveInLocalStorage("savedStepSize", numericValue);
+    }
+    
+    useEffect(() => {
+        handleStartDispatchX(stepSize);
+    }, [stepSize])
 
     const [repeatCount, setRepeatCount] = useState(3);
 
     const handleStart = async () => {
         if (repeatCount < 1) return;
+        console.log(`${startDispatchX}, ${endDispatchX}, ${stepSize}`);
         const results = [];
-        for (let dispatchCount = startDispatchX; dispatchCount <= endDispatchX; dispatchCount++) {
+        for (let dispatchCount = startDispatchX; dispatchCount <= endDispatchX; dispatchCount=dispatchCount+stepSize) {
             const times = [];
-            await sleep(500);
-            await runShader(10, 1, 1, 1, 1, 1);
+            await sleep(100);
             for (let run = 0; run < repeatCount; run++) {
+                const dep = await runShader(10, 1, 1, 1, 1, 1);
                 const timeSeconds = await runShader(startWorkgroupX, 1, 1, dispatchCount, 1, 1);
                 times.push(timeSeconds);
             }
@@ -60,8 +77,8 @@ export function AutoRunShader() {
                 avgHashrate
             });
         }
-
-        downloadCsv(results);
+        const adapter = await navigator.gpu.requestAdapter();
+        downloadCsv(results, adapter.info.description);
         console.log("Finished and downloaded CSV");
     };
 
@@ -80,7 +97,12 @@ export function AutoRunShader() {
                 <p> End dwg_x  : </p>
                 <input type="number" placeholder="" value={endDispatchX} onChange={(e) => handleEndDispatchX(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
             </div>
-            <h3>Test Range : [{startWorkgroupX}, 1, 1]&[{startDispatchX}, 1, 1] ➡️ [{startWorkgroupX}, 1, 1]&[{endDispatchX}, 1, 1]</h3>
+            <div style={{ display: "flex", flexDirection: "row", gap: "10px", alignItems: "center", fontSize: "20px", margin: "-20px 0px", }}>
+                <p> Step Size : </p>
+                <input type="number" placeholder="" value={stepSize} onChange={(e) => handleStepSize(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
+            </div>
+            <h3>Test Set Range : [{startWorkgroupX}, 1, 1]&[{startDispatchX}, 1, 1] ➡️ [{startWorkgroupX}, 1, 1]&[{endDispatchX}, 1, 1]</h3>
+            <h3>Test Thread Range : {startWorkgroupX * startDispatchX} ➡️ {startWorkgroupX * endDispatchX} with Step {startWorkgroupX * stepSize}, Total Iter {endDispatchX / stepSize} * {repeatCount} </h3>
             <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 Repeat runs per dispatch (3-10 recommended):
                 <input
@@ -99,16 +121,15 @@ export function AutoRunShader() {
     );
 }
 
-function downloadCsv(rows) {
+async function downloadCsv(rows, device) {
     if (!rows.length) return;
     const header = "dispatchCount,totalThreads,avgSeconds,avgHashrate";
     const csvRows = [header, ...rows.map(({ dispatchCount, totalThreads, avgSeconds, avgHashrate }) =>
         `${dispatchCount},${totalThreads},${avgSeconds},${avgHashrate}`
     )];
-
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const downloadName = `auto_run_shader_4-to-10000_${timestamp}.csv`;
+    const downloadName = `${device}_${timestamp}.csv`;
 
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
