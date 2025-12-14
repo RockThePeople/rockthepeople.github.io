@@ -116,9 +116,6 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
             .join('');
 
         console.log("✅ Mining Successful!");
-        console.log("Nonce:", nonce);
-        console.log("Hash:", hashHex);
-
         readBuffer.unmap();
         return {
             success: true,
@@ -135,8 +132,6 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
 const wgslCode = (dispatchSize, workgroupSize, iterCount, totalThread, isTestMode) => {
     const gridWidthX = workgroupSize[0] * dispatchSize[0];
     const gridHeightY = workgroupSize[1] * dispatchSize[1];
-
-    // JS에서 먼저 offset 계산 (WGSL 파싱 오류 방지 및 최적화)
     const baseNonceOffset = iterCount * totalThread;
     const earlyExitLogic = isTestMode
         ? "// [TEST MODE] Early Exit Disabled for Benchmarking"

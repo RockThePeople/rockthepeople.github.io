@@ -81,9 +81,7 @@ export function AutoRunShader() {
         // for (let dispatchCount = startDispatchX; dispatchCount <= endDispatchX; dispatchCount = dispatchCount + stepSize) {
         for (let dispatchCount = endDispatchX; dispatchCount >= startDispatchX; dispatchCount = dispatchCount - stepSize) {
             const times = [];
-            await sleep(300);
-            await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
-            await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
+            await sleep(100);
             await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
             for (let run = 0; run < repeatCount; run++) {
                 const res = await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
