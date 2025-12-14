@@ -1,5 +1,3 @@
-import { hexStringToUint32Array } from "./util.js";
-
 const GPUBufferUsage = {
     MAP_READ: 0x0001,
     MAP_WRITE: 0x0002,
@@ -24,37 +22,20 @@ const GPUMapMode = {
     WRITE: 0x0002
 };
 
-// const sleep = () => new Promise(resolve => setTimeout(resolve, 100));
+async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z, itercount, totalThread, isTestMode = false) {
 
-const header = '00000020a790cb4c5d8b0626334258f255e606ba5cdd6aab675102000000000000000000d291de09276913782ecb9e9ff8de2a274a6575915311699c61cf906b5ed19120ca14bf67b18b0217';
-const target = '0000000000000000000000000000000000000000000000000000000000000000';
-
-async function runShader (wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z) {
+    const start = performance.now();
+    const device = GPUdevice;
 
     const workgroupSize = [wgs_x, wgs_y, wgs_z];
     const dispatchSize = [dwg_x, dwg_y, dwg_z];
-
-    const headerArray = hexStringToUint32Array(header);
-    const targetArray = hexStringToUint32Array(target);
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-        console.log("navigator.gpu.requestAdapter() failed... waiting for the adapter");
-        return null;
-    }
-    const device = await adapter.requestDevice();
-    if (device == undefined) {
-        console.log("adapter.requestDevice() failed... waiting for the device");
-        return null;
-    }
 
     const headerBuffer = device.createBuffer({
         mappedAtCreation: true,
         size: headerArray.byteLength,
         usage: GPUBufferUsage.STORAGE,
     });
-    const mapHeaderBuffer = headerBuffer.getMappedRange();
-    new Int32Array(mapHeaderBuffer).set(headerArray);
+    new Int32Array(headerBuffer.getMappedRange()).set(headerArray);
     headerBuffer.unmap();
 
     const targetBuffer = device.createBuffer({
@@ -62,98 +43,107 @@ async function runShader (wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z) {
         size: targetArray.byteLength,
         usage: GPUBufferUsage.STORAGE,
     });
-    const mapTargetBuffer = targetBuffer.getMappedRange();
-    new Int32Array(mapTargetBuffer).set(targetArray);
+    new Int32Array(targetBuffer.getMappedRange()).set(targetArray);
     targetBuffer.unmap();
 
-    const nonceBufferSize = Uint32Array.BYTES_PER_ELEMENT * 4;
-    const nonceBuffer = device.createBuffer({
-        size: nonceBufferSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+    const resultElementCount = 4 + 1 + 32;
+    const resultBufferSize = Uint32Array.BYTES_PER_ELEMENT * resultElementCount;
+
+    const resultBuffer = device.createBuffer({
+        size: resultBufferSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
     });
 
-    const bindGroupLayout = (device).createBindGroupLayout({
-        entries: [
-            {
-                binding: 0,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: { type: "read-only-storage" }
-            },
-            {
-                binding: 1,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: { type: "read-only-storage" }
-            },
+    const initCommandEncoder = device.createCommandEncoder();
+    initCommandEncoder.clearBuffer(resultBuffer);
+    device.queue.submit([initCommandEncoder.finish()]);
 
-            {
-                binding: 2,
-                visibility: GPUShaderStage.COMPUTE,
-                buffer: { type: "storage" }
-            }
+    const bindGroupLayout = device.createBindGroupLayout({
+        entries: [
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }
         ]
     });
 
-    const start = performance.now();
-
-    // Layout 바탕으로 binding group 생성, 버퍼 사이즈도 다 세팅해줘야함. 필수
     const bindGroup = device.createBindGroup({
         layout: bindGroupLayout,
         entries: [
             { binding: 0, resource: { buffer: headerBuffer } },
             { binding: 1, resource: { buffer: targetBuffer } },
-            { binding: 2, resource: { buffer: nonceBuffer } }
+            { binding: 2, resource: { buffer: resultBuffer } }
         ]
     });
 
     const shaderModule = device.createShaderModule({
-        code: wgslCode(dispatchSize, workgroupSize)
+        code: wgslCode(dispatchSize, workgroupSize, itercount, totalThread, isTestMode)
     });
 
-    // // 이렇게 파이프라인 짤때도 bindgroupLayout으로 짜야함
     const computePipeline = device.createComputePipeline({
-        layout: device.createPipelineLayout({
-            bindGroupLayouts: [bindGroupLayout]
-        }),
-        compute: {
-            module: shaderModule,
-            entryPoint: "main"
-        }
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+        compute: { module: shaderModule, entryPoint: "main" }
     });
 
-    // 코멘드 인코더 세팅
     const commandEncoder = device.createCommandEncoder();
     const passEncoder = commandEncoder.beginComputePass();
-
-    // // 파이프라인 만들고, 바인딩한거 세팅하고
     passEncoder.setPipeline(computePipeline);
     passEncoder.setBindGroup(0, bindGroup);
 
-    // // 워크그룹 만들어 디스패칭. 여기  체크하고 넘어갈 것
     passEncoder.dispatchWorkgroups(dispatchSize[0], dispatchSize[1], dispatchSize[2]);
     passEncoder.end();
 
-    const nonceReadBuffer = device.createBuffer({
-        size: nonceBufferSize,
+    const readBuffer = device.createBuffer({
+        size: resultBufferSize,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
     });
 
-    commandEncoder.copyBufferToBuffer(
-        nonceBuffer, 0, nonceReadBuffer, 0, nonceBufferSize
-    );
+    commandEncoder.copyBufferToBuffer(resultBuffer, 0, readBuffer, 0, resultBufferSize);
+    device.queue.submit([commandEncoder.finish()]);
 
-    const gpuCommands = commandEncoder.finish();
-    device.queue.submit([gpuCommands]);
+    await readBuffer.mapAsync(GPUMapMode.READ);
+    const mappedRange = readBuffer.getMappedRange();
+    const resultArray = new Uint32Array(mappedRange);
 
-    await nonceReadBuffer.mapAsync(GPUMapMode.READ);
-    const nonceResultBuffer = await nonceReadBuffer.getMappedRange();
+    const time = (performance.now() - start) / 1000
+    const successFlag = resultArray[4];
 
-    const end = performance.now();
-    console.log("Time taken: ", ((end - start) / 1000).toFixed(4));
+    if (successFlag === 1) {
+        const nonce = resultArray.slice(0, 4);
+        const hashBytes = resultArray.slice(5, 5 + 32);
 
-    return (end - start) / 1000;
+        const hashHex = Array.from(hashBytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+
+        console.log("✅ Mining Successful!");
+        console.log("Nonce:", nonce);
+        console.log("Hash:", hashHex);
+
+        readBuffer.unmap();
+        return {
+            success: true,
+            nonce: nonce,
+            hash: hashHex,
+            time: time
+        };
+    } else {
+        readBuffer.unmap();
+        return { success: false, time: time };
+    }
 };
 
-const wgslCode = (dispatchSize, workgroupSize) => `struct SHA256_CTX {
+const wgslCode = (dispatchSize, workgroupSize, iterCount, totalThread, isTestMode) => {
+    const gridWidthX = workgroupSize[0] * dispatchSize[0];
+    const gridHeightY = workgroupSize[1] * dispatchSize[1];
+
+    // JS에서 먼저 offset 계산 (WGSL 파싱 오류 방지 및 최적화)
+    const baseNonceOffset = iterCount * totalThread;
+    const earlyExitLogic = isTestMode
+        ? "// [TEST MODE] Early Exit Disabled for Benchmarking"
+        : "if (atomicLoad(&outputState[4]) == 1u) { return; }";
+
+    return `
+struct SHA256_CTX {
     data : array<u32, 64>,
     datalen : u32,
     bitlen : array<u32, 2>,
@@ -163,14 +153,12 @@ const wgslCode = (dispatchSize, workgroupSize) => `struct SHA256_CTX {
 
 @group(0) @binding(0) var<storage, read> input : array<u32>;
 @group(0) @binding(1) var<storage, read> targetHash : array<u32>;
-@group(0) @binding(2) var<storage, read_write> currectNonce : array<u32>;
-// @group(0) @binding(3) var<storage, read_write> currectHash : array<u32>;
-  
+@group(0) @binding(2) var<storage, read_write> outputState : array<atomic<u32>>;
+
 const SHA256_BLOCK_SIZE = 32;
-// const inputLen = 200;
 const inputLen :u32 = 76;
 const totalLen :u32 = 80;
-  
+
 const k = array<u32, 64> (
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
     0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
@@ -181,132 +169,80 @@ const k = array<u32, 64> (
     0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
 );
-  
+
 fn ROTLEFT(a : u32, b : u32) -> u32{return (((a) << (b)) | ((a) >> (32-(b))));}
 fn ROTRIGHT(a : u32, b : u32) -> u32{return (((a) >> (b)) | ((a) << (32-(b))));}
-  
 fn CH(x : u32, y : u32, z : u32) -> u32{return (((x) & (y)) ^ (~(x) & (z)));}
 fn MAJ(x : u32, y : u32, z : u32) -> u32{return (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)));}
 fn EP0(x : u32) -> u32{return (ROTRIGHT(x,2) ^ ROTRIGHT(x,13) ^ ROTRIGHT(x,22));}
 fn EP1(x : u32) -> u32{return (ROTRIGHT(x,6) ^ ROTRIGHT(x,11) ^ ROTRIGHT(x,25));}
 fn SIG0(x : u32) -> u32{return (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3));}
 fn SIG1(x : u32) -> u32{return (ROTRIGHT(x,17) ^ ROTRIGHT(x,19) ^ ((x) >> 10));}
-  
+
 fn sha256_transform(ctx : ptr<function, SHA256_CTX>) {
-    var a : u32;
-    var b : u32;
-    var c : u32;
-    var d : u32;
-    var e : u32;
-    var f : u32;
-    var g : u32;
-    var h : u32;
-    var i : u32 = 0;
-    var j : u32 = 0;
-    var t1 : u32;
-    var t2 : u32;
+    var a : u32; var b : u32; var c : u32; var d : u32;
+    var e : u32; var f : u32; var g : u32; var h : u32;
+    var i : u32 = 0; var j : u32 = 0;
+    var t1 : u32; var t2 : u32;
     var m : array<u32, 64>;
-  
     while(i < 16) {
         m[i] = ((*ctx).data[j] << 24) | ((*ctx).data[j + 1] << 16) | ((*ctx).data[j + 2] << 8) | ((*ctx).data[j + 3]);
-        i++;
-        j += 4;
+        i++; j += 4;
     }            
-  
     while(i < 64) {
         m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
         i++;
     }
-  
-    a = (*ctx).state[0];
-    b = (*ctx).state[1];
-    c = (*ctx).state[2];
-    d = (*ctx).state[3];
-    e = (*ctx).state[4];
-    f = (*ctx).state[5];
-    g = (*ctx).state[6];
-    h = (*ctx).state[7];
-  
-    i = 0;
-    for (; i < 64; i++) {
+    a = (*ctx).state[0]; b = (*ctx).state[1]; c = (*ctx).state[2]; d = (*ctx).state[3];
+    e = (*ctx).state[4]; f = (*ctx).state[5]; g = (*ctx).state[6]; h = (*ctx).state[7];
+    for (i = 0; i < 64; i++) {
         t1 = h + EP1(e) + CH(e,f,g) + k[i] + m[i];
         t2 = EP0(a) + MAJ(a,b,c);
-        h = g;
-        g = f;
-        f = e;
-        e = d + t1;
-        d = c;
-        c = b;
-        b = a;
-        a = t1 + t2;
+        h = g; g = f; f = e; e = d + t1;
+        d = c; c = b; b = a; a = t1 + t2;
     }
-  
-    (*ctx).state[0] += a;
-    (*ctx).state[1] += b;
-    (*ctx).state[2] += c;
-    (*ctx).state[3] += d;
-    (*ctx).state[4] += e;
-    (*ctx).state[5] += f;
-    (*ctx).state[6] += g;
-    (*ctx).state[7] += h;
+    (*ctx).state[0] += a; (*ctx).state[1] += b; (*ctx).state[2] += c; (*ctx).state[3] += d;
+    (*ctx).state[4] += e; (*ctx).state[5] += f; (*ctx).state[6] += g; (*ctx).state[7] += h;
 }
-  
+
 fn sha256_update(ctx : ptr<function, SHA256_CTX>, data : ptr<function, array<u32, totalLen>>, len : u32) {
     for (var i : u32 = 0; i < len; i++) {
         (*ctx).data[(*ctx).datalen] = (*data)[i];
         (*ctx).datalen++;
         if ((*ctx).datalen == 64) {
             sha256_transform(ctx);
-            if ((*ctx).bitlen[0] > 0xffffffff - 512) {
-                (*ctx).bitlen[1]++;
-            };
+            if ((*ctx).bitlen[0] > 0xffffffff - 512) { (*ctx).bitlen[1]++; };
             (*ctx).bitlen[0] += 512;
             (*ctx).datalen = 0;
         }
     }
 }
-  
+
 fn sha256_update_2(ctx : ptr<function, SHA256_CTX>, data : ptr<function, array<u32, SHA256_BLOCK_SIZE>>){
     for (var i : u32 = 0; i < SHA256_BLOCK_SIZE; i++) {
         (*ctx).data[(*ctx).datalen] = (*data)[i];
         (*ctx).datalen++;
         if ((*ctx).datalen == 64) {
             sha256_transform(ctx);
-            if ((*ctx).bitlen[0] > 0xffffffff - 512) {
-                (*ctx).bitlen[1]++;
-            };
+            if ((*ctx).bitlen[0] > 0xffffffff - 512) { (*ctx).bitlen[1]++; };
             (*ctx).bitlen[0] += 512;
             (*ctx).datalen = 0;
         }
     }
 }
-  
+
 fn sha256_final(ctx : ptr<function, SHA256_CTX>, hash:  ptr<function, array<u32, SHA256_BLOCK_SIZE>>) {
     var i : u32 = (*ctx).datalen;
-  
     if ((*ctx).datalen < 56) {
-        (*ctx).data[i] = 0x80;
-        i++;
-        while (i < 56){
-            (*ctx).data[i] = 0x00;
-            i++;
-        }
+        (*ctx).data[i] = 0x80; i++;
+        while (i < 56){ (*ctx).data[i] = 0x00; i++; }
     } else {
-        (*ctx).data[i] = 0x80;
-        i++;
-        while (i < 64){
-            (*ctx).data[i] = 0x00;
-            i++;
-        }
+        (*ctx).data[i] = 0x80; i++;
+        while (i < 64){ (*ctx).data[i] = 0x00; i++; }
         sha256_transform(ctx);
-        for (var i: u32 = 0; i < 56 ; i++) {
-            (*ctx).data[i] = 0;
-        }
+        for (var i: u32 = 0; i < 56 ; i++) { (*ctx).data[i] = 0; }
     }
-        
-    if ((*ctx).bitlen[0] > 0xffffffff - (*ctx).datalen * 8) {
-        (*ctx).bitlen[1]++;
-    }
+    if ((*ctx).bitlen[0] > 0xffffffff - (*ctx).datalen * 8) { (*ctx).bitlen[1]++; }
     (*ctx).bitlen[0] += (*ctx).datalen * 8;
     (*ctx).data[63] = (*ctx).bitlen[0];
     (*ctx).data[62] = (*ctx).bitlen[0] >> 8;
@@ -317,11 +253,10 @@ fn sha256_final(ctx : ptr<function, SHA256_CTX>, hash:  ptr<function, array<u32,
     (*ctx).data[57] = (*ctx).bitlen[1] >> 16;
     (*ctx).data[56] = (*ctx).bitlen[1] >> 24;
     sha256_transform(ctx);
-        
     for (i = 0; i < 4; i++) {
-        (*hash)[i] = ((*ctx).state[0] >> (24 - i * 8)) & 0x000000ff;
-        (*hash)[i + 4] = ((*ctx).state[1] >> (24 - i * 8)) & 0x000000ff;
-        (*hash)[i + 8] = ((*ctx).state[2] >> (24 - i * 8)) & 0x000000ff;
+        (*hash)[i]      = ((*ctx).state[0] >> (24 - i * 8)) & 0x000000ff;
+        (*hash)[i + 4]  = ((*ctx).state[1] >> (24 - i * 8)) & 0x000000ff;
+        (*hash)[i + 8]  = ((*ctx).state[2] >> (24 - i * 8)) & 0x000000ff;
         (*hash)[i + 12] = ((*ctx).state[3] >> (24 - i * 8)) & 0x000000ff;
         (*hash)[i + 16] = ((*ctx).state[4] >> (24 - i * 8)) & 0x000000ff;
         (*hash)[i + 20] = ((*ctx).state[5] >> (24 - i * 8)) & 0x000000ff;
@@ -329,91 +264,76 @@ fn sha256_final(ctx : ptr<function, SHA256_CTX>, hash:  ptr<function, array<u32,
         (*hash)[i + 28] = ((*ctx).state[7] >> (24 - i * 8)) & 0x000000ff;
     }
 }
-  
+
 fn u32_array_less_than(hash : ptr<function, array<u32, SHA256_BLOCK_SIZE>>) -> bool {
     for (var i : u32 = 0; i < SHA256_BLOCK_SIZE; i++) {
-        if ((*hash)[i] > targetHash[i]) {
-            return false;
-        } else if ((*hash)[i] < targetHash[i]) {
-            return true;
-        }
+        if (i >= arrayLength(&targetHash)) { break; } 
+        if ((*hash)[i] > targetHash[i]) { return false; }
+        else if ((*hash)[i] < targetHash[i]) { return true; }
     }
     return true;
 }
-  
+
+// [수정됨] Bitwise Operation을 사용하여 32비트 정수 전체 범위를 바이트 배열로 변환
 fn nonce_to_array(n: u32) -> array<u32, 4> {
     var result : array<u32, 4>;
-    var temp : u32 = n; 
-  
-    for(var i :u32 = 4; i > 0; i--) {
-        if(temp == 0) {
-            result[i-1] = 0;
-        }
-        result[i-1] = (temp % 100);
-        temp = temp / 100;
-    };
+    // Big Endian 방식 (일반적인 SHA-256 입력 처리)
+    result[0] = (n >> 24) & 0xFF;
+    result[1] = (n >> 16) & 0xFF;
+    result[2] = (n >> 8) & 0xFF;
+    result[3] = n & 0xFF;
     return result;
 }
-  
+
 @compute @workgroup_size(${workgroupSize[0]}, ${workgroupSize[1]}, ${workgroupSize[2]})
-fn main(
-    @builtin(global_invocation_id) global_invocation_id : vec3<u32>
-) {
+fn main(@builtin(global_invocation_id) global_invocation_id : vec3<u32>) {
+    ${earlyExitLogic}
+
     var ctx : SHA256_CTX;
     var hash : array<u32, SHA256_BLOCK_SIZE>;
     var local_input : array<u32, 80>;
     var nonce_array : array<u32, 4>;
 
-    let nonce : u32 = global_invocation_id.y * ${workgroupSize[0] * dispatchSize[0]} + global_invocation_id.x;
+    let grid_width : u32 = ${gridWidthX}u;
+    let grid_height : u32 = ${gridHeightY}u;
 
-    // Copying sequence 
-    for(var i:u32 = 0; i<inputLen; i++){
-        local_input[i] = input[i];
-    }
+    // [수정됨] baseNonceOffset을 문자열 치환 시 바로 적용하고, u32 캐스팅 명시
+    let nonce : u32 = u32(${baseNonceOffset}) + 
+                      global_invocation_id.x + 
+                      (global_invocation_id.y * grid_width) +
+                      (global_invocation_id.z * grid_width * grid_height);
 
-    // Nonce adding sequence needed!
-
+    for(var i:u32 = 0; i<inputLen; i++){ local_input[i] = input[i]; }
     nonce_array = nonce_to_array(nonce);
+    for(var i:u32 = 0; i<4; i++){ local_input[i+inputLen] = nonce_array[i]; }
 
-    for(var i:u32 = 0; i<4; i++){
-        local_input[i+inputLen] = nonce_array[i];
-    }
-
-    //SHA256d Start!
-
-    ctx.datalen = 0;     
-    ctx.bitlen[0] = 0;
-    ctx.bitlen[1] = 0;
-    ctx.state[0] = 0x6a09e667;
-    ctx.state[1] = 0xbb67ae85;
-    ctx.state[2] = 0x3c6ef372;
-    ctx.state[3] = 0xa54ff53a;
-    ctx.state[4] = 0x510e527f;
-    ctx.state[5] = 0x9b05688c;
-    ctx.state[6] = 0x1f83d9ab;
-    ctx.state[7] = 0x5be0cd19;
+    // First Hash
+    ctx.datalen = 0; ctx.bitlen[0] = 0; ctx.bitlen[1] = 0;
+    ctx.state = array<u32, 8>(0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19);
     sha256_update(&ctx, &local_input, totalLen);
     sha256_final(&ctx, &hash);
   
-    ctx.datalen = 0;
-    ctx.bitlen[0] = 0;
-    ctx.bitlen[1] = 0;
-    ctx.state[0] = 0x6a09e667;
-    ctx.state[1] = 0xbb67ae85;
-    ctx.state[2] = 0x3c6ef372;
-    ctx.state[3] = 0xa54ff53a;
-    ctx.state[4] = 0x510e527f;
-    ctx.state[5] = 0x9b05688c;
-    ctx.state[6] = 0x1f83d9ab;
-    ctx.state[7] = 0x5be0cd19;
+    // Second Hash
+    ctx.datalen = 0; ctx.bitlen[0] = 0; ctx.bitlen[1] = 0;
+    ctx.state = array<u32, 8>(0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19);
     sha256_update_2(&ctx, &hash);
     sha256_final(&ctx, &hash);
 
     if(u32_array_less_than(&hash)) {
-        for (var i : u32 = 0; i < 4; i++) { currectNonce[i] = nonce_array[i]; };
+        let old_value = atomicExchange(&outputState[4], 1u);
+        if (old_value == 0u) {
+            atomicStore(&outputState[0], nonce_array[0]);
+            atomicStore(&outputState[1], nonce_array[1]);
+            atomicStore(&outputState[2], nonce_array[2]);
+            atomicStore(&outputState[3], nonce_array[3]);
+            
+            for (var k = 0u; k < 32u; k++) {
+                atomicStore(&outputState[5u + k], hash[k]);
+            }
+        }
     }
-    return;
-}`
-
+}
+`;
+};
 
 export { runShader };

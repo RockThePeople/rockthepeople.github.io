@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "./Button.jsx";
 import { runShader } from "./shader.js";
 import { saveInLocalStorage, getFromLocalStorage } from "./LocalStorageControl.jsx";
+import { hexStringToUint32Array } from "./util.js";
+
+const header = '00000020a790cb4c5d8b0626334258f255e606ba5cdd6aab675102000000000000000000d291de09276913782ecb9e9ff8de2a274a6575915311699c61cf906b5ed19120ca14bf67ba125015';
+const target = '0000008000000000000000000000000000000000000000000000000000000000';
 
 // const DISPATCH_START = 1;
 // const DISPATCH_END = 1000;
@@ -11,7 +15,11 @@ const sleep = (delay) => new Promise(resolve => setTimeout(resolve, delay));
 
 function averageMinusMax(values) {
     if (!values.length) return 0;
-    return Math.min(...values);
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    // const max = Math.max(...values);
+    // const min = Math.min(...values);
+    return sum / values.length;
+    // return values.length > 2 ? (sum - max) / (values.length - 1) : sum / values.length;
 }
 
 export function AutoRunShader() {
@@ -47,37 +55,51 @@ export function AutoRunShader() {
         setStepSize(numericValue);
         saveInLocalStorage("savedStepSize", numericValue);
     }
-    
+
     useEffect(() => {
         handleStartDispatchX(stepSize);
     }, [stepSize])
 
     const [repeatCount, setRepeatCount] = useState(3);
 
+    const targetArray = hexStringToUint32Array(target);
+    const headerArray = hexStringToUint32Array(header);
     const handleStart = async () => {
         if (repeatCount < 1) return;
         console.log(`${startDispatchX}, ${endDispatchX}, ${stepSize}`);
         const results = [];
-        for (let dispatchCount = startDispatchX; dispatchCount <= endDispatchX; dispatchCount=dispatchCount+stepSize) {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+            console.log("navigator.gpu.requestAdapter() failed... waiting for the adapter");
+            return null;
+        }
+        const device = await adapter.requestDevice();
+        if (device == undefined) {
+            console.log("adapter.requestDevice() failed... waiting for the device");
+            return null;
+        }
+        // for (let dispatchCount = startDispatchX; dispatchCount <= endDispatchX; dispatchCount = dispatchCount + stepSize) {
+        for (let dispatchCount = endDispatchX; dispatchCount >= startDispatchX; dispatchCount = dispatchCount - stepSize) {
             const times = [];
-            await sleep(100);
+            await sleep(300);
+            await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
+            await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
+            await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
             for (let run = 0; run < repeatCount; run++) {
-                const dep = await runShader(10, 1, 1, 1, 1, 1);
-                const timeSeconds = await runShader(startWorkgroupX, 1, 1, dispatchCount, 1, 1);
-                times.push(timeSeconds);
+                const res = await runShader(device, headerArray, targetArray, startWorkgroupX, 1, 1, dispatchCount, 1, 1, 1, 1, true);
+                times.push(res.time);
             }
             const avgSeconds = averageMinusMax(times);
             const totalThreads = startWorkgroupX * dispatchCount;
-            const avgHashrate = avgSeconds > 0 ? (totalThreads / avgSeconds).toFixed(2) : "0";
-
+            const avgHashrate = avgSeconds > 0 ? (totalThreads / avgSeconds).toFixed(8) : "0";
+            console.log(`Invoke Thread: ${totalThreads}, Times: ${times.map(t => t.toFixed(8)).join(", ")}`);
+            
             results.push({
-                dispatchCount,
                 totalThreads,
                 avgSeconds: avgSeconds.toFixed(6),
                 avgHashrate
             });
         }
-        const adapter = await navigator.gpu.requestAdapter();
         downloadCsv(results, adapter.info.description);
         console.log("Finished and downloaded CSV");
     };
@@ -102,7 +124,7 @@ export function AutoRunShader() {
                 <input type="number" placeholder="" value={stepSize} onChange={(e) => handleStepSize(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
             </div>
             <h3>Test Set Range : [{startWorkgroupX}, 1, 1]&[{startDispatchX}, 1, 1] ➡️ [{startWorkgroupX}, 1, 1]&[{endDispatchX}, 1, 1]</h3>
-            <h3>Test Thread Range : {startWorkgroupX * startDispatchX} ➡️ {startWorkgroupX * endDispatchX} with Step {startWorkgroupX * stepSize}, Total Iter {endDispatchX / stepSize} * {repeatCount} </h3>
+            <h3>Test Thread Range : {startWorkgroupX * startDispatchX} ➡️ {startWorkgroupX * endDispatchX} with Step {startWorkgroupX * stepSize}, Total Iter {(endDispatchX-startDispatchX) / stepSize} * {repeatCount} </h3>
             <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 Repeat runs per dispatch (3-10 recommended):
                 <input
@@ -123,9 +145,9 @@ export function AutoRunShader() {
 
 async function downloadCsv(rows, device) {
     if (!rows.length) return;
-    const header = "dispatchCount,totalThreads,avgSeconds,avgHashrate";
-    const csvRows = [header, ...rows.map(({ dispatchCount, totalThreads, avgSeconds, avgHashrate }) =>
-        `${dispatchCount},${totalThreads},${avgSeconds},${avgHashrate}`
+    const header = "totalThreads,avgSeconds,avgHashrate";
+    const csvRows = [header, ...rows.map(({totalThreads, avgSeconds, avgHashrate }) =>
+        `${totalThreads},${avgSeconds},${avgHashrate}`
     )];
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");

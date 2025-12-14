@@ -1,14 +1,36 @@
 
 import { runShader } from './shader.js';
+import { hexStringToUint32Array } from "./util.js";
 
-async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration, record) {
+
+const header_template = '00000020a790cb4c5d8b0626334258f255e606ba5cdd6aab675102000000000000000000d291de09276913782ecb9e9ff8de2a274a6575915311699c61cf906b5ed19120ca14bf67';
+const target = '0000008000000000000000000000000000000000000000000000000000000000';
+const isTest = true;
+
+async function runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration, record) {
+
+    var baseNum = 10000001;
+    const headerControler = { num: 1 };
+
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+        console.log("navigator.gpu.requestAdapter() failed... waiting for the adapter");
+        return null;
+    }
+    const device = await adapter.requestDevice();
+    if (device == undefined) {
+        console.log("adapter.requestDevice() failed... waiting for the device");
+        return null;
+    }
+    const targetArray = hexStringToUint32Array(target);
+
     // 15625*64 = 1,000,000 (1M)
     let wgs = [workgroupX, workgroupY, workgroupZ];
     let dwg = [dispatchX, dispatchY, dispatchZ];
     let totalThreads = wgs[0] * wgs[1] * wgs[2] * dwg[0] * dwg[1] * dwg[2];
-    if (totalThreads > 1000000) {
-        totalThreads = (totalThreads / 1000000).toFixed(2) + "M";
-    }
+
+    const iteration = Math.pow(2, 32) / (totalThreads);
+    let itercount = 0;
 
     console.log(`dispatchAmount >> ${workgroupX * workgroupY * workgroupZ * dispatchX * dispatchY * dispatchZ}M`);
 
@@ -17,19 +39,26 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
     const shouldRecord = Boolean(record);
 
     let performanceArray = shouldRecord ? [] : null;
-
+    console.log(`Header replacement period: ${iteration}`);
     while (Date.now() - startTime < duration) {
+        if (itercount > iteration+1) {
+            headerControler.num++;
+            itercount = 0;
+        }
+        const header = header_template + (baseNum + headerControler.num);
+        const headerArray = hexStringToUint32Array(header);
+        console.log(`${itercount}`)
         try {
-            const time = await runShader(wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2]);
-            if (time == null) {
+            const res = await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], itercount, totalThreads, isTest);
+            if (res == null) {
                 console.log("Shader execution failed, exiting performance test.");
                 break;
             }
 
             let work = wgs[0] * wgs[1] * wgs[2] * dwg[0] * dwg[1] * dwg[2];
-            let hashrate = (work / time).toFixed(0);
+            let hashrate = (work / res.time).toFixed(0);
             if (shouldRecord) {
-                performanceArray.push({ time: time, hashrate: hashrate });
+                performanceArray.push({ time: res.time, hashrate: hashrate });
             }
         } catch (error) {
             console.log(
@@ -37,6 +66,7 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
             )
             break;
         }
+        itercount++;
     }
     if (!shouldRecord) {
         return;
@@ -54,7 +84,12 @@ async function runPerformance(device, workgroupX, workgroupY, workgroupZ, dispat
 
     const csvBlob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const downloadName = `${totalThreads}_threads_${timestamp}.csv`;
+
+    let millionThread;
+    if (totalThreads > 1000000) {
+        millionThread = (totalThreads / 1000000).toFixed(2) + "M";
+    }
+    const downloadName = `${millionThread}_threads_${timestamp}.csv`;
 
     const downloadLink = document.createElement("a");
     downloadLink.href = URL.createObjectURL(csvBlob);

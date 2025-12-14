@@ -38,14 +38,14 @@ export const MeasurePerformance = () => {
     const savedDuration = getFromLocalStorage("duration");
     const [duration, setDuration] = useState(savedDuration);
     function handleDuration(value) { setDuration(value); saveInLocalStorage("duration", value); }
-    const [device, setDevice] = useState("none");
-    function handleDeviceChange(value) { setDevice(value); }
+    const [deviceName, setDeviceName] = useState("none");
+    function handleDeviceNameChange(value) { setDeviceName(value); }
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", paddingLeft: "50px", backgroundColor:"#c2dfbdff" }}>
+        <div style={{ display: "flex", flexDirection: "column", paddingLeft: "50px", backgroundColor: "#c2dfbdff" }}>
             <div style={{ display: "flex", flexDirection: 'row', alignItems: "center" }}>
                 <p style={{ fontSize: "20px", marginRight: "10px" }}>Device :</p>
-                <select onChange={(e) => handleDeviceChange(e.target.value)} style={{ fontSize: '20px', width: 'fit-content', height: 'fit-content' }}>
+                <select onChange={(e) => handleDeviceNameChange(e.target.value)} style={{ fontSize: '20px', width: 'fit-content', height: 'fit-content' }}>
                     <option value="none">None</option>
                     <option value="m1">m1air</option>
                     <option value="m2">m1pro</option>
@@ -55,7 +55,7 @@ export const MeasurePerformance = () => {
                     <option value="RTX_A5000">RTX_A5000</option>
                 </select>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", fontSize: "24px"}}>
+            <div style={{ display: "flex", flexDirection: "column", fontSize: "24px" }}>
                 <div style={{ display: "flex", flexDirection: "row", gap: "10px", alignItems: "center", fontSize: "20px", marginTop: "-20px" }}>
                     <p>- workgroup_size() : </p>
                     <input type="number" placeholder="million unit" value={workgroupX} onChange={(e) => handleworkgroupX(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
@@ -77,7 +77,7 @@ export const MeasurePerformance = () => {
                         <input type="checkbox" checked={recordState} onChange={(e) => handleRecordToggle(e.target.checked)} />
                         Record
                     </label>
-                    <Button clickEvent={() => runPerformance(device, workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration, recordState)} name={"Run"} />
+                    <Button clickEvent={() => runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration, recordState)} name={"Run"} />
                 </div>
             </div>
         </div >
