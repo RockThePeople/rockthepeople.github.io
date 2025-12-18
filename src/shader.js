@@ -22,7 +22,7 @@ const GPUMapMode = {
     WRITE: 0x0002
 };
 
-async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z, itercount, totalThread, isTestMode = false) {
+async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z, itercount, totalThread, isTestMode ) {
 
     const start = performance.now();
     const device = GPUdevice;

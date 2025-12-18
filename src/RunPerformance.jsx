@@ -1,5 +1,4 @@
 import { runShader } from './shader.js';
-import { runHarshShader } from './harshShader.js';
 import { hexStringToUint32Array } from "./util.js";
 
 
@@ -7,7 +6,7 @@ const header_template = '00000020a790cb4c5d8b0626334258f255e606ba5cdd6aab6751020
 const target = '0000008000000000000000000000000000000000000000000000000000000000';
 const isTest = true;
 
-async function runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration, record, harshState, wgslIter) {
+async function runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, setDuration, record) {
 
     var baseNum = 10000001;
     const headerControler = { num: 1 };
@@ -38,11 +37,11 @@ async function runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dis
     const duration = setDuration * 1000;   // 1분 = 60초 = 60000ms
     const shouldRecord = Boolean(record);
 
-    let performanceArray = shouldRecord ? [] : null;
+    const performanceArray = shouldRecord ? [] : null;
     console.log(`Header replacement period: ${iteration}`);
-    let work = wgs[0] * wgs[1] * wgs[2] * dwg[0] * dwg[1] * dwg[2];
+    const work = wgs[0] * wgs[1] * wgs[2] * dwg[0] * dwg[1] * dwg[2];
     while (Date.now() - startTime < duration) {
-        if (itercount > iteration+1) {
+        if (itercount > iteration + 1) {
             headerControler.num++;
             itercount = 0;
         }
@@ -50,19 +49,13 @@ async function runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dis
         const headerArray = hexStringToUint32Array(header);
         console.log(`${itercount}`)
         try {
-            if(harshState){
-                var res = await runHarshShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], itercount, totalThreads, isTest, wgslIter);
-                var hashrate = (work * wgslIter / res.time).toFixed(0);
-            } else {
-                var res = await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], itercount, totalThreads, isTest);
-                var hashrate = (work / res.time).toFixed(0);
-            }
-            // const res = await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], itercount, totalThreads, isTest);
+            const res = await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], itercount, totalThreads, isTest);
             if (res == null) {
                 console.log("Shader execution failed, exiting performance test.");
                 break;
             }
             if (shouldRecord) {
+                const hashrate = (work / res.time).toFixed(0);
                 performanceArray.push({ time: res.time, hashrate: hashrate });
             }
         } catch (error) {

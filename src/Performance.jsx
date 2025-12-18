@@ -35,12 +35,6 @@ export const MeasurePerformance = () => {
     const [recordState, setRecordState] = useState(false);
     function handleRecordToggle(value) { setRecordState(value); }
 
-    const [harshState, setHarshState] = useState(false);
-    function handleHarshToggle(value) { setHarshState(value); }
-
-    const [ wgslIter, setWgslIter ] = useState(3);
-    function handleWgslIter(value) { setWgslIter(value); }
-
     const savedDuration = getFromLocalStorage("duration");
     const [duration, setDuration] = useState(savedDuration);
     function handleDuration(value) { setDuration(value); saveInLocalStorage("duration", value); }
@@ -60,15 +54,6 @@ export const MeasurePerformance = () => {
                     <option value="RTX2070S">RTX2070S</option>
                     <option value="RTX_A5000">RTX_A5000</option>
                 </select>
-            </div>
-
-            <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "16px" }}>
-                <input type="checkbox" checked={harshState} onChange={(e) => handleHarshToggle(e.target.checked)} />
-                Harsh?
-            </label>
-            <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "10px", fontSize: "20px" }}>
-                <p>WGSL Iteration :</p>
-                <input type="number" value={wgslIter} onChange={(e) => handleWgslIter(e.target.value)} style={{ width: "140px", fontSize: "24px", height: "30px" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", fontSize: "24px" }}>
                 <div style={{ display: "flex", flexDirection: "row", gap: "10px", alignItems: "center", fontSize: "20px", marginTop: "-20px" }}>
@@ -92,7 +77,7 @@ export const MeasurePerformance = () => {
                         <input type="checkbox" checked={recordState} onChange={(e) => handleRecordToggle(e.target.checked)} />
                         Record
                     </label>
-                    <Button clickEvent={() => runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration, recordState, harshState, wgslIter)} name={"Run"} />
+                    <Button clickEvent={() => runPerformance(workgroupX, workgroupY, workgroupZ, dispatchX, dispatchY, dispatchZ, duration, recordState)} name={"Run"} />
                 </div>
             </div>
         </div >
