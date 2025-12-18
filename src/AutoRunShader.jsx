@@ -59,7 +59,7 @@ export function AutoRunShader() {
     useEffect(() => {
         handleStartDispatchX(stepSize);
     }, [stepSize])
-
+    
     const [repeatCount, setRepeatCount] = useState(3);
 
     const targetArray = hexStringToUint32Array(target);
